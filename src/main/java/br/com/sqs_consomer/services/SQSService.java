@@ -6,6 +6,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public class SQSService {
@@ -32,20 +33,43 @@ public class SQSService {
                 .credentialsProvider(credentialsProvider)
                 .build();
 
-        // ===== Busca uma Fila =====
-        GetQueueUrlRequest request = GetQueueUrlRequest.builder()
-                .queueName("fila-danilo.fifo") // ler da fila fifo
-                // .queueName("fila-danilo")  // ler da fila padrão
-                .queueOwnerAWSAccountId("473247640396").build();
+        
+        String awsId = System.getenv("AWS_ACCOUNT_ID");       
+        GetQueueUrlRequest request = GetQueueUrlRequest.builder()               
+                .queueName("queue_poc_ecommerce")  
+                .queueOwnerAWSAccountId(awsId).build();
         GetQueueUrlResponse createResult = sqsClient.getQueueUrl(request);
         
         List<Message> messages = receiveMessages(sqsClient, createResult.queueUrl());
-        // System.out.println("Quantidade de mensagens: " + messages.size());
+      
         for (Message mess : messages) {
-            System.out.println("Mensagem: " + mess.body());
-        }
+            
+            String toMe = "pedido1";
+            String from = mess.body();
 
-        deleteMessages(sqsClient, createResult.queueUrl(),  messages);
+            System.out.println("Mensagem: " + from);
+            if ( from.equals(toMe)){
+                System.out.println("ENVIANDO PARA APROVACAO DE CREDITO");
+                deleteMessages(sqsClient, createResult.queueUrl(),  messages);
+                sendMessage(sqsClient, createResult.queueUrl(), "transacao1");
+            } else if (from.equals("transacao1")) {
+                System.out.println("APROVACAO , enviando NotaFiscal");
+                deleteMessages(sqsClient, createResult.queueUrl(),  messages);
+                sendMessage(sqsClient, createResult.queueUrl(), "notaFiscal");                
+            } else if (from.equals("notaFiscal")){
+                System.out.println("APROVACAO , enviando despacho");
+                deleteMessages(sqsClient, createResult.queueUrl(),  messages);
+                sendMessage(sqsClient, createResult.queueUrl(), "despacho");
+            } else if (from.equals("despacho")){
+                System.out.println("APROVACAO , enviando cliente");
+                deleteMessages(sqsClient, createResult.queueUrl(),  messages);
+                sendMessage(sqsClient, createResult.queueUrl(), "pedidoFim");
+            }else if (from.equals("pedidoFim")){
+                System.out.println("ENTREGUE");
+                deleteMessages(sqsClient, createResult.queueUrl(),  messages);                
+            }
+
+        }        
 
         sqsClient.close();
     }
@@ -53,7 +77,7 @@ public class SQSService {
     public static  List<Message> receiveMessages(SqsClient sqsClient, String queueUrl) {
         ReceiveMessageRequest receiveMessageRequest = ReceiveMessageRequest.builder()
             .queueUrl(queueUrl)
-            .waitTimeSeconds(20) // Long Polling Explicar conceito para econmizar $$
+            .waitTimeSeconds(20)
             .maxNumberOfMessages(5)
             .build();
         List<Message> messages = sqsClient.receiveMessage(receiveMessageRequest).messages();
@@ -69,4 +93,12 @@ public class SQSService {
             sqsClient.deleteMessage(deleteMessageRequest);
         }
    }
+
+   public static void sendMessage(SqsClient sqsClient, String queueUrl, String message) {
+    SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
+        .queueUrl(queueUrl)       
+        .messageBody(message)
+        .build();
+    sqsClient.sendMessage(sendMsgRequest);
+}
 }
